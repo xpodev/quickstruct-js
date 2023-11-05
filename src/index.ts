@@ -9,7 +9,7 @@ export function toBytes(obj: any): Uint8Array {
   return new Uint8Array(byteArray);
 }
 
-export function fromBytes<T>(cls: Type<T>, bytes: Uint8Array): T {
+export function fromBytes<T>(cls: Type<T>, bytes: Uint8Array, { asJson = true} = {}): T {
   const obj = new cls();
   let offset = 0;
 
@@ -40,6 +40,10 @@ export function fromBytes<T>(cls: Type<T>, bytes: Uint8Array): T {
       }
       offset += dataType.size;
     }
+  }
+
+  if (asJson) {
+    return JSON.parse(JSON.stringify(obj));
   }
 
   return obj;
@@ -203,7 +207,7 @@ export const Short = makeDataType((value: number) => {
   return Number.isInteger(value);
 }, 2);
 
-export const Boolean = makeDataType(
+export const Bool = makeDataType(
   (value: boolean | number) => {
     return (
       typeof value === "boolean" ||
