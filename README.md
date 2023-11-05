@@ -2,7 +2,11 @@
 
 Quick Struct is a simple and fast way to create cpp structs in TypeScript.
 
+> [!WARNING]  
+> This package is still in development and is not published to npm and yarn yet.
+
 ## Installation
+
 
 ```bash
 npm install quickstruct
