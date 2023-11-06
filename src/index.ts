@@ -1,7 +1,7 @@
 export function toBytes(obj: any): Uint8Array {
   const byteArray = Object.values(obj).reduce((acc: number[], value) => {
     if (value instanceof DataType) {
-      acc.push(...new Uint8Array(value.bytes));
+      acc.push(...value.toBytes());
     }
     return acc;
   }, []);
@@ -16,29 +16,9 @@ export function fromBytes<T>(cls: Type<T>, bytes: Uint8Array, { asJson = true} =
   for (const key in obj) {
     if (obj[key] instanceof DataType) {
       const dataType = obj[key] as DataType<any>;
-      const value = bytes.slice(offset, offset + dataType.size);
-      dataType.bytes.set(value);
-      switch (dataType.type) {
-        case DataTypeEnum.Number:
-          obj[key] = dataType.bytes.reduce((acc, byte, index) => {
-            acc += byte << (index * 8);
-            return acc;
-          }, 0) as any;
-          break;
-        case DataTypeEnum.String:
-          obj[key] = dataType.bytes.reduce((acc, byte) => {
-            acc += String.fromCharCode(byte);
-            return acc;
-          }, "") as any;
-          break;
-        case DataTypeEnum.Boolean:
-          obj[key] = (new Uint8Array(dataType.bytes.buffer)[0] === 1) as any;
-          break;
-        case DataTypeEnum.Null:
-          obj[key] = null as any;
-          break;
-      }
-      offset += dataType.size;
+      const [value, size] = dataType.fromBytes(bytes.slice(offset));
+      obj[key] = value;
+      offset += size;
     }
   }
 
@@ -53,7 +33,7 @@ type Struct = {
   [key: string]: DataType<any> | number | string | boolean | null;
 };
 
-export function StructDecorator() {
+function StructDecorator() {
   return function <T extends Type<any>>(
     target: T,
     ...args: any[]
@@ -85,12 +65,27 @@ type Type<T> = {
 abstract class DataType<T> {
   constructor(public readonly size: number) {
     this.bytes = new Uint8Array(this.size);
+    return new Proxy(this, {
+      get: function (obj, prop: string) {
+        if (prop in obj) {
+          return obj[prop as keyof DataType<T>];
+        } else if (obj.value) {
+          const requestedValue = obj.value[prop as keyof T];
+          if (typeof requestedValue === "function") {
+            return requestedValue.bind(obj.value);
+          }
+          return requestedValue;
+        }
+      }
+    });
   }
 
   public readonly bytes: Uint8Array;
-  abstract readonly type: DataTypeEnum;
+  abstract readonly type: DataTypeEnum | ((value: any) => boolean);
   abstract value: T;
   abstract validate(value: any): boolean;
+  abstract toBytes(): Uint8Array;
+  abstract fromBytes(bytes: Uint8Array): [T, number];
 
   valueOf() {
     return this.value;
@@ -131,6 +126,37 @@ function makeDataType<T>(
       }
 
       return false;
+    }
+
+    toBytes(): Uint8Array {
+      return this.bytes;
+    }
+
+    fromBytes(bytes: Uint8Array): [T, number] {
+      const value = bytes.slice(0, this.size);
+      this.bytes.set(value);
+      switch (this.type) {
+        case DataTypeEnum.Number:
+          this.value = this.bytes.reduce((acc, byte, index) => {
+            acc += byte << (index * 8);
+            return acc;
+          }, 0) as any;
+          break;
+        case DataTypeEnum.String:
+          this.value = this.bytes.reduce((acc, byte) => {
+            acc += String.fromCharCode(byte);
+            return acc;
+          }, "") as any;
+          break;
+        case DataTypeEnum.Boolean:
+          this.value = (new Uint8Array(this.bytes.buffer)[0] === 1) as any;
+          break;
+        case DataTypeEnum.Null:
+          this.value = null as any;
+          break;
+      }
+
+      return [this.value, this.size];
     }
 
     get type() {
@@ -184,29 +210,9 @@ function makeDataType<T>(
   }, ScalarDataType) as () => any;
 }
 
-export const Int = makeDataType((value: number) => {
-  return Number.isInteger(value);
-}, 4);
-
-export const Float = makeDataType((value: number) => {
-  return typeof value === "number";
-}, 8);
-
-export const Char = makeDataType(
-  (value: string | number) => {
-    return (
-      typeof value === "string" ||
-      (typeof value === "number" && Number.isInteger(value))
-    );
-  },
-  1,
-  DataTypeEnum.String
-);
-
-export const Short = makeDataType((value: number) => {
-  return Number.isInteger(value);
-}, 2);
-
+/**
+ * Bool is a 1 byte size, represented as a boolean
+ */
 export const Bool = makeDataType(
   (value: boolean | number) => {
     return (
@@ -218,6 +224,83 @@ export const Bool = makeDataType(
   DataTypeEnum.Boolean
 );
 
+/**
+ * Char is a single character, 1 byte size, represented as a string
+ */
+export const Char = makeDataType(
+  (value: string | number) => {
+    return (
+      typeof value === "string" ||
+      (typeof value === "number" && Number.isInteger(value))
+    );
+  },
+  1,
+  DataTypeEnum.String
+);
+
+/**
+ * Byte is the same as a char, 1 byte size, but represented as a number
+ */
+export const Byte = makeDataType(
+  (value: string | number) => {
+    return (
+      typeof value === "string" ||
+      (typeof value === "number" && Number.isInteger(value))
+    );
+  },
+  1,
+  DataTypeEnum.Number
+);
+
+/**
+ * Short is a 2 byte size, represented as a number
+ */
+export const Short = makeDataType((value: number) => {
+  return Number.isInteger(value);
+}, 2);
+
+/**
+ * Int is a 4 byte size, represented as a number
+ */
+export const Int = makeDataType((value: number) => {
+  return Number.isInteger(value);
+}, 4);
+
+/**
+ * Float is a 4 byte size, represented as a number
+ */
+export const Float = makeDataType((value: number) => {
+  return typeof value === "number";
+}, 4);
+
+/**
+ * Long is a 8 byte size, represented as a number
+ */
+export const Long = makeDataType((value: number) => {
+  return Number.isInteger(value);
+}, 8);
+
+/**
+ * Double is a 8 byte size, represented as a number
+ */
+export const Double = makeDataType((value: number) => {
+  return typeof value === "number";
+}, 8);
+
+/**
+ * LongLong is a 16 byte size, represented as a number
+ */
+export const LongLong = makeDataType((value: number) => {
+  return Number.isInteger(value);
+}, 16);
+
+/**
+ * LongDouble is a 16 byte size, represented as a number
+ */
+export const LongDouble = makeDataType((value: number) => {
+  return typeof value === "number";
+}, 16);
+
 export const Null = makeDataType(
   (value: null) => {
     return value === null;
@@ -225,3 +308,51 @@ export const Null = makeDataType(
   1,
   DataTypeEnum.Null
 );
+
+class _Str extends DataType<string> {
+  constructor() {
+    super(0);
+    this.bytes = new Uint8Array();
+  }
+
+  bytes: Uint8Array;
+  
+  private _value!: string;
+  type = DataTypeEnum.String;
+  
+  validate(value: any): boolean {
+    return typeof value === "string";
+  }
+
+  toBytes(): Uint8Array {
+    const bytes = new Uint8Array(this.value.length + 1);
+    bytes.set(new Uint8Array(this.value.split("").map((char) => char.charCodeAt(0))));
+    bytes.set(new Uint8Array([0]), this.value.length);
+    return bytes;
+  }
+
+  fromBytes(bytes: Uint8Array): [string, number] {
+    let size = 0;
+    let value = "";
+    for (let i = 0; i < bytes.length; i++) {
+      if (bytes[i] === 0) {
+        size = i;
+        break;
+      }
+      value += String.fromCharCode(bytes[i]);
+    }
+    this.value = value;
+    return [value, size + 1];
+  }
+
+  get value(): string {
+    return this._value;
+  }
+
+  set value(value: string) {
+    this._value = value;
+  }
+  
+}
+
+export const Str = Object.assign(function() { return new _Str(); }, _Str) as () => any;

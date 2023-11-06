@@ -7,7 +7,6 @@ Quick Struct is a simple and fast way to create cpp structs in TypeScript.
 
 ## Installation
 
-
 ```bash
 npm install quickstruct
 ```
@@ -47,11 +46,17 @@ SimpleStruct { int1: 1234, char1: 'a', char2: 88 }
 The following types are supported:
 | Type | Description | Displayed as |
 | --- | --- | --- |
+| Bool | 1 byte boolean | boolean |
+| Char | 1 byte character | string |
+| Byte | 1 byte character | number |
+| Short | 2 byte integer | number |
 | Int | 4 byte integer | number |
 | Float | 4 byte float | number |
-| Char | 1 byte character | string |
-| Short | 2 byte integer | number |
-| Bool | 1 byte boolean | boolean |
+| Long | 8 byte integer | number |
+| Double | 8 byte float | number |
+| LongLong | 16 byte integer | number |
+| LongDouble | 16 byte float | number |
+| Str | String with dynamic length | string |
 | Null | 1 byte null | null |
 
 ## Contributing
